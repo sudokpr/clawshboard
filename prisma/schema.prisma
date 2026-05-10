@@ -11,35 +11,18 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// ─── Auth ─────────────────────────────────────────────────────────────────────
+
 model User {
   id        String   @id @default(cuid())
   email     String   @unique
   name      String?
-  password  String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   sessions  Session[]
-  accounts  Account[]
   otp       Otp?
   tasks     Task[]
   projects  Project[]
-}
-
-model Account {
-  id                String  @id @default(cuid())
-  userId            String
-  type              String
-  provider          String
-  providerAccountId String
-  refresh_token     String?
-  access_token      String?
-  expires_at        Int?
-  token_type        String?
-  scope             String?
-  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@unique([provider, providerAccountId])
-  @@index([userId])
 }
 
 model Session {
@@ -49,14 +32,6 @@ model Session {
   expires      DateTime
   user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   @@index([userId])
-}
-
-model VerificationToken {
-  identifier String
-  token     String   @unique
-  expires   DateTime
-
-  @@unique([identifier, token])
 }
 
 model Otp {
@@ -70,12 +45,102 @@ model Otp {
   user      User?    @relation(fields: [userId], references: [id])
 }
 
+// ─── OpenClaw Agents ───────────────────────────────────────────────────────────
+
+model OpenClawAgent {
+  id            String   @id @default(cuid())
+  openclawId    String   @unique // e.g. "main", "journal"
+  name          String
+  workspace     String
+  model         String?
+  isDefault     Boolean  @default(false)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  cronJobs      CronJob[]
+  recurringTasks RecurringTask[]
+  journalEntries JournalEntry[]
+}
+
+// ─── OpenClaw Cron Jobs ────────────────────────────────────────────────────────
+
+model CronJob {
+  id           String   @id @default(cuid())
+  openclawId   String   @unique // UUID from OpenClaw cron
+  name         String
+  description  String?
+  schedule     String   // cron expression e.g. "0 21 * * *"
+  timezone     String   @default("Asia/Calcutta")
+  nextRunAt    DateTime?
+  lastRunAt    DateTime?
+  enabled      Boolean  @default(true)
+  openclawAgentId String
+  openclawAgent   OpenClawAgent @relation(fields: [openclawAgentId], references: [id])
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+// ─── OpenClaw Recurring Tasks (from todo-registry.md) ─────────────────────────
+
+model RecurringTask {
+  id           String   @id @default(cuid())
+  openclawId   String   @unique // stable ID from registry e.g. "plant-water"
+  name         String
+  logFile      String   // path relative to workspace e.g. "tasks/plant-watering-log.md"
+  reminderTime String   // "21:00"
+  notes        String?
+  openclawAgentId String
+  openclawAgent   OpenClawAgent @relation(fields: [openclawAgentId], references: [id])
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  logs         RecurringTaskLog[]
+}
+
+model RecurringTaskLog {
+  id       String   @id @default(cuid())
+  taskId   String
+  date     String   // "YYYY-MM-DD"
+  status   String   // "done" | "missed" | "snoozed"
+  note     String?
+  loggedAt DateTime @default(now())
+  task     RecurringTask @relation(fields: [taskId], references: [id])
+  @@unique([taskId, date])
+}
+
+// ─── Journal Entries ─────────────────────────────────────────────────────────
+
+model JournalEntry {
+  id        String   @id @default(cuid())
+  date      String   @unique // "YYYY-MM-DD"
+  rawEntries String?
+  summary   String?
+  openclawAgentId String?
+  openclawAgent OpenClawAgent? @relation(fields: [openclawAgentId], references: [id])
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// ─── Health / Activity Logs ─────────────────────────────────────────────────
+
+model HealthLog {
+  id        String   @id @default(cuid())
+  type      String   // "bottle" | "sleep" | "urine"
+  timestamp DateTime
+  value     String?  // ml for bottle, event for sleep
+  note      String?
+  createdAt DateTime @default(now())
+  @@index([type, timestamp])
+}
+
+// ─── Task Board (Clawshboard native + OpenClaw-sourced) ─────────────────────
+
 model Task {
   id          String   @id @default(cuid())
   title       String
   description String?
-  status      String   @default("backlog") // backlog | in_progress | in_review | done
-  priority    String   @default("medium")  // low | medium | high | urgent
+  status      String   @default("backlog")
+  priority    String   @default("medium")
+  source      String   @default("clawshboard") // "clawshboard" | "openclaw"
+  openclawId  String?  // if sourced from OpenClaw
   assigneeId  String?
   projectId   String?
   createdAt   DateTime @default(now())
@@ -84,12 +149,16 @@ model Task {
   project     Project? @relation(fields: [projectId], references: [id])
 }
 
+// ─── Projects ────────────────────────────────────────────────────────────────
+
 model Project {
   id          String   @id @default(cuid())
   name        String
   description String?
   color       String   @default("#6366f1")
-  progress    Int      @default(0) // 0-100
+  progress    Int      @default(0)
+  source      String   @default("clawshboard")
+  openclawId  String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
   ownerId     String

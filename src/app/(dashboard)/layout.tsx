@@ -6,6 +6,7 @@ const nav = [
   { href: "/tasks", label: "Tasks", icon: "◈" },
   { href: "/calendar", label: "Calendar", icon: "◇" },
   { href: "/projects", label: "Projects", icon: "◎" },
+  { href: "/openclaw", label: "OpenClaw", icon: "⚡" },
 ];
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
