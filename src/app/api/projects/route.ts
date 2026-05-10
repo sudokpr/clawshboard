@@ -11,9 +11,11 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
-  const { name, description, color, ownerId } = await req.json();
+  const { name, description, color } = await req.json();
+  let user = await prisma.user.findFirst();
+  if (!user) user = await prisma.user.create({ data: { email: "demo@local", name: "Demo User" } });
   const project = await prisma.project.create({
-    data: { name, description, color, ownerId },
+    data: { name, description, color, ownerId: user.id },
   });
   return Response.json(project);
 }
